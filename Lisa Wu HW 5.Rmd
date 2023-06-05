@@ -1,0 +1,322 @@
+---
+title: "Lisa Wu HW 5"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(lubridate)
+library(arrow)
+library(ggplot2)
+library(broom)
+```
+
+
+
+```{r import saved data, echo=FALSE}
+data_path <- "/Users/lisawu/Downloads/"
+applications <- read_parquet(paste0(data_path,"exercise_3_applications.parquet"))
+
+applications
+```
+
+
+```{r workgroup}
+applications <- applications %>%
+  mutate(wg = (floor(examiner_art_unit / 10) * 10)) %>%
+  mutate(appl_status_date = dmy_hms(appl_status_date)) %>%
+  mutate(year = year(appl_status_date)) %>%
+  filter(year <= 2017) %>%
+  drop_na(examiner_id)
+```
+
+```{r data-2}
+examiners <- applications %>%
+  group_by(examiner_id, examiner_art_unit, year) %>%
+  drop_na(gender) %>%
+  rename(id = examiner_id, art_unit = examiner_art_unit) %>%
+  summarise(
+    gender = first(gender),
+    race = first(race),
+    year = first(year),
+    tc = first(tc),
+    wg = first(wg)
+    )
+```
+
+```{r table for gender distribution of tc over the years}
+#create a new table with only id, year, and gender, tc
+new_table_1 <- examiners %>%
+  select(id, year, gender, tc)
+
+# create a table to get the count for female and male for each year for each tc
+count_table_1 <- new_table_1 %>%
+  group_by(year, tc, gender) %>%
+  summarize(count = n())
+
+# create a table to average count of female and male over 17 years 
+average_table <- count_table_1 %>%
+  group_by(tc, gender) %>%
+  summarize(average_count = mean(count))
+
+```
+
+
+## A. Gender Representation Across TC 
+#### 1. Histogram for Across TC
+```{r histogram for gender distribution of tc over the years}
+# Create the histogram
+histogram <- ggplot(average_table, aes(x = as.factor(tc), y = average_count, fill = gender)) +
+  geom_histogram(stat = "identity", position = "stack", color = "black") +
+  labs(x = "Technology Center", y = "Average Count for Female and Male", title = "Average Count for Gender Over the Years") +
+  scale_fill_manual(values = c("lightpink", "lightblue"))
+
+# Print the histogram
+print(histogram)
+```
+
+
+#### 2. Pie Chart for TC = 1600 for Analysis Purpose
+```{r pie chart for tc 1600}
+# Calculate the total average_count for each tc
+total_counts <- average_table %>%
+  group_by(tc) %>%
+  summarize(total_count = sum(average_count))
+
+# Add the percentage column to the average_table
+average_table <- average_table %>%
+  left_join(total_counts, by = "tc") %>%
+  mutate(percentage = (average_count / total_count) * 100)
+
+for (tc_value in unique(average_table$tc)) {
+  if (tc_value == 1600) {
+    # Subset the data for the current tc value
+    subset_data <- average_table %>% filter(tc == tc_value)
+
+    # Create the pie chart
+    pie_chart <- ggplot(subset_data, aes(x = "", y = percentage, fill = gender)) +
+      geom_bar(width = 1, stat = "identity") +
+      coord_polar("y", start = 0) +
+      labs(fill = "Gender", x = NULL, y = NULL, title = paste("Gener Distribution for TC", tc_value)) +
+      scale_fill_manual(values = c("lightpink", "lightblue")) +
+      theme_void() +
+      theme(plot.title = element_text(hjust = 0.5))
+
+    # Add percentage labels
+    pie_chart <- pie_chart +
+      geom_text(aes(label = paste0(round(percentage, 1), "%")), position = position_stack(vjust = 0.5))
+
+    # Print the pie chart
+    print(pie_chart) 
+    }
+}
+```
+
+
+```{r table for gender distribution of WGs over the years}
+#create a new table with only id, year, and gender, wg
+new_table_2 <- examiners %>%
+  select(id, year, gender, wg)
+
+# create a table to get the count for female and male for each year for each wg
+count_table_2 <- new_table_2 %>%
+  group_by(year, wg, gender) %>%
+  summarize(count_wg = n())
+
+# create a table to average count of female and male over 17 years 
+average_table_2 <- count_table_2 %>%
+  group_by(wg, gender) %>%
+  summarize(average_count_wg = mean(count_wg))
+```
+
+
+## B. Gender Representation Across WGs
+#### 1. Histogram Across WGs
+```{r histogram for gender distribution of all WGs over the years}
+# Group the data frame by 'wg' and 'gender' and calculate the sum of 'average_count_wg'
+grouped_df <- average_table_2 %>%
+  group_by(wg, gender) %>%
+  summarize(average_count_wg = sum(average_count_wg))
+
+# Create the stacked histogram for workgroups
+ggplot(grouped_df, aes(x = as.factor(wg), y = average_count_wg, fill = gender)) +
+  geom_col(position = "stack") +
+  labs(x = "Workgroups", y = "Average Count of Gender") +
+  scale_fill_manual(values = c("female" = "lightpink", "male" = "lightblue")) +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+```
+
+
+#### 2. Count Table for WG 1610 for Analysis Purpose
+```{r count table for wg 1610}
+filtered_table_wg_under_tc_1600 <- average_table_2 %>%
+  filter(wg %in% c(1600, 1610, 1620, 1630, 1640, 1650, 1660, 1670))
+
+print(filtered_table_wg_under_tc_1600)
+```
+
+
+#### 3. Pie Chart for wg 1610 for Analysis Purpose
+```{r pie chart for gender distribution of workgroup 1610 over the years}
+# Calculate the sum of average_count_wg for each value under wg
+sum_counts_wg <- average_table_2 %>%
+  group_by(wg) %>%
+  summarize(sum_count_wg = sum(average_count_wg)) 
+
+# Join the sum_counts_wg with the average_table_2
+average_table_2 <- average_table_2 %>%
+  left_join(sum_counts_wg, by = "wg") %>%
+  mutate(percentage_wg = (average_count_wg / sum_count_wg) * 100) %>%
+  select(-sum_count_wg)
+
+#print out the table of wg = 1610
+## Define the values of wg
+wg_values <- c(1610)
+
+## Filter average_table_2 for the specified wg values and select the desired variables
+filtered_table <- average_table_2 %>%
+  filter(wg %in% wg_values) %>%
+  select(wg, gender, average_count_wg, percentage_wg)
+
+## Print the filtered table
+print(filtered_table)
+
+## Iterate through each value of wg
+for (wg_value in wg_values) {
+  # Filter average_table_2 for the current wg value
+  filtered_data <- average_table_2 %>%
+    filter(wg == wg_value)
+  
+  ## Create the pie chart with labels
+  pie_chart <- ggplot(filtered_data, aes(x = "", y = percentage_wg, fill = gender)) +
+    geom_bar(width = 1, stat = "identity") +
+    geom_text(aes(label = paste0(round(percentage_wg), "%")), position = position_stack(vjust = 0.5), color = "black") +
+    coord_polar("y", start = 0) +
+    labs(fill = "Gender", x = NULL, y = NULL, title = paste("Gender Distribution for Workgroup =", wg_value)) +
+    scale_fill_manual(values = c("lightpink", "lightblue")) +
+    theme_void() +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  ## Print the pie chart
+  print(pie_chart)
+}
+```
+
+
+
+```{r table for gender distribution of art units under wg 1610 over the years}
+#create a new table with only id, year, and gender, au
+new_table_3 <- examiners %>%
+  select(id, year, gender, art_unit, wg)
+
+# create a table to get the count for female and male for each year for each tc
+count_table_3 <- new_table_3 %>%
+  group_by(year, art_unit, gender,wg) %>%
+  summarize(count_au = n())
+
+# create a table to average count of female and male over 17 years
+average_table_3 <- count_table_3 %>%
+  group_by(art_unit, gender,wg) %>%
+  summarize(average_count_au = mean(count_au))
+```
+
+## C. Gender Representation Across Art Units
+#### 1. Histogram for All Art Units Under Workgroup 1610 for Analysis Purpose
+```{r histogram for gender distribution of art units under wg 1610 over the years}
+# Create the stacked histogram for artunits
+## Filter the rows where art_unit is between 1610 and 1619
+filtered_table_3 <- average_table_3 %>%
+  filter(art_unit >= 1610 & art_unit <= 1619)
+
+ggplot(filtered_table_3, aes(x = as.factor(art_unit), y = average_count_au, fill = gender)) +
+  geom_col(position = "stack") +
+  labs(x = "Art Units", y = "Average Count of Gender") +
+  scale_fill_manual(values = c("female" = "lightpink", "male" = "lightblue")) +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+```
+
+
+#### 2. Pie Chart for Art Unit 1611 for Analysis Purpose
+```{r pie chart for gender distribution of art units of 1611 over the years}
+# gender percentage for art_units
+filtered_table_3 <- filtered_table_3 %>%
+  group_by(art_unit) %>%
+  mutate(percentage_au = (average_count_au / sum(average_count_au)*100))
+
+# fildter the dataframe to art unit 1611
+filtered_table_3_1611 <- filtered_table_3 %>%
+  filter(art_unit == 1611)
+
+# Create the pie chart
+ggplot(filtered_table_3_1611, aes(x = "", y = percentage_au, fill = gender)) +
+  geom_bar(stat = "identity", width = 1) +
+  geom_text(aes(label = paste0(round(percentage_au), "%")), position = position_stack(vjust = 0.5), color = "black") +
+  coord_polar("y", start = 0) +
+  labs(fill = "Gender", x = NULL, y = NULL, title = "Gender Distribution for Art Unit 1611") +
+  scale_fill_manual(values = c("lightpink", "lightblue"))  +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+## D. Comments on Gender Segregation and representation at TC, WG, and AU level
+#### The gender ratio varies across different organizational levels. At the TC 1600 level, there is an almost equal distribution of males and females. When we narrow our focus to Workgroup (WG) 1610, the gender ratio remains close to TC 1600 but with a slightly higher proportion of females.
+
+#### Interestingly, the gender dynamics change significantly within WG 1610 even though in 1610 level, it shows an almost equal distribution. When we examine Art Unit 1611. In AU 1611, there is a substantial majority of females (61%) compared to males (39%). This observation highlights how the gender experience can vary significantly depending on the specific AU, WG, and TC, emphasizing the importance of considering multiple organizational levels when evaluating gender ratios. This insight emphasizes that gender diversity and experiences can be influenced by the specific context and organizational structure within an institution.
+
+
+## E. The Implication of Any Difference 
+```{r}
+# Calculate the sum of average_count_wg by wg
+summarized_table <- filtered_table_wg_under_tc_1600 %>%
+  group_by(wg) %>%
+  summarize(sum_average_count_wg = sum(average_count_wg))
+
+# Calculate the squared value for sum_average_count_wg
+summarized_table <- summarized_table %>%
+  mutate(sqrd_sum_average_count_wg = sum_average_count_wg^2)
+
+# Calculate the sum of sqrd_sum_average_count_wg
+total_sqrd_sum_average_count_wg <- sum(summarized_table$sqrd_sum_average_count_wg)
+
+# Calculate the sum of sum_average_count_wg
+total_sum_average_count_wg <- sum(summarized_table$sum_average_count_wg)
+
+# Perform the division
+result <- total_sqrd_sum_average_count_wg / total_sum_average_count_wg
+
+# Calculate the sum of sum_average_count_wg
+total_sum_average_count_wg_2 <- sum(summarized_table$sum_average_count_wg)
+
+# Perform the division
+result_2 <- total_sum_average_count_wg_2 / 8
+
+print(result)
+print(result_2)
+
+```
+
+
+### I want to see what workgroup 1600 sees as the average size of department verses what an art unit individual sees as the average size of workgroup 1600 using social network concept. 
+
+#### I. Process to get what an individual person sees:
+##### 1. Get the total employee size in each art unit (female and male)
+##### 2. Squared the number of the total employee size for each art unit and see how many views in total we have
+##### 3. Sum up all squared number of total employee size and then divided it by the total employee size in the art unit to get what an individual person sees as the average employee size of workgroup 1600 
+
+#### - For this, I got the result of 118 as the average size of workgroup 1600 in the art unit level 
+
+
+#### II. Process to get what workgroup 16000 sees rather than in the art unit level
+##### 1. Get the total employee size in each art unit (female and male)
+##### 2. sum all the numbers for employee size in each art unit and then divided by 8 art units 
+
+#### - For this, I got the result of 87 as the average size of workgroup 1600 in the workgroup level 
+
+#### III. In conclusion, just like the average of class size example we used in the class. It is interesting to see how an individual at the art unit level will see the size of the workgroup 1600 differently than what a person who is in charge of workgroup 1600 sees. Perceiving the size of a department can significantly differ based on one's organizational level. Moreover, the disparity becomes even more pronounced when considering the gender distribution across various organizational levels. These variations highlight the importance of perspective.
+
+
